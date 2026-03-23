@@ -13,7 +13,7 @@ Main regression:
              + b3*Z_Interaction
              + b4*Std_Log_Market_Cap + Sector_Fixed_Effects + e
 
-Data file:  data/raw/phase2.xlsx  (sheet: "Main Hard Copy")
+Data files: data/raw/phase2.xlsx and data/raw/phase3.xlsx (sheet: "Main Hard Copy")
             All key variables (CARs, Std_Surprise_EPS, Std_Disagreement_Gap) are
             pre-calculated in the Excel file via Bloomberg formulas.
 
@@ -37,14 +37,16 @@ import pandas as pd
 import statsmodels.api as sm
 
 ROOT        = Path(__file__).parent
-DATA_FILE   = ROOT / "data" / "raw" / "phase2.xlsx"
+DATA_FILE_2 = ROOT / "data" / "raw" / "phase2.xlsx"
+DATA_FILE_3 = ROOT / "data" / "raw" / "phase3.xlsx"
 RESULTS_DIR = ROOT / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-if not DATA_FILE.exists():
+if not DATA_FILE_2.exists() or not DATA_FILE_3.exists():
     sys.exit(
-        f"\nERROR: Data file not found at:\n  {DATA_FILE}\n\n"
-        "Please place phase2.xlsx in the data/raw/ folder and re-run.\n"
+        f"\nERROR: One or both data files not found.\n"
+        f"  {DATA_FILE_2}\n  {DATA_FILE_3}\n\n"
+        "Please place phase2.xlsx and phase3.xlsx in the data/raw/ folder and re-run.\n"
     )
 
 
@@ -56,7 +58,9 @@ print("\n" + "=" * 65)
 print("TASK 1 -- Loading data")
 print("=" * 65)
 
-df = pd.read_excel(DATA_FILE, sheet_name="Main Hard Copy")
+df2 = pd.read_excel(DATA_FILE_2, sheet_name="Main Hard Copy")
+df3 = pd.read_excel(DATA_FILE_3, sheet_name="Main Hard Copy")
+df = pd.concat([df2, df3], ignore_index=True)
 
 print(f"\n  Loaded {len(df)} events - {df.shape[1]} columns")
 print(f"  Columns: {df.columns.tolist()}\n")
@@ -219,6 +223,5 @@ else:
     print()
     print("  Significance: *** p<0.01  ** p<0.05  * p<0.10")
     print()
-    print("  NOTE: Results are from the TEST dataset -- interpret with caution")
-    print("        until the full dataset is in place.")
+    print("  NOTE: Results are based on the combined phase 2 and phase 3 dataset.")
     print()
