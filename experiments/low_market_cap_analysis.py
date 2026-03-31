@@ -1,28 +1,21 @@
 """
-analysis.py
-===========
-Post-Earnings Announcement Drift (PEAD) � Main Analysis Script
+low_market_cap_analysis.py
+==========================
+Post-Earnings Announcement Drift (PEAD)  Subgroup Analysis Script
 
 Hypothesis:
     A larger disagreement gap (Management Guidance EPS - Analyst Consensus EPS)
     creates informational complexity, causing an initial underreaction on the
     announcement day and a stronger PEAD over the following 60 trading days.
-
-Main regression:
-    CAR_2_60 = alpha + b1*Z_Surprise + b2*Z_Gap
-             + b3*Z_Interaction
-             + b4*Std_Log_Market_Cap + Sector_Fixed_Effects + e
-
-Data files: data/raw/Data til Advanced Finance seminar v*.xlsx (sheet: "Main Hard Copy")
-            All key variables (CARs, Std_Surprise_EPS, Std_Disagreement_Gap) are
-            pre-calculated in the Excel file via Bloomberg formulas.
+    This analysis restricts the sample to a specific subgroup of companies 
+    with relatively low market capitalizations.
 
 How to run:
-    python analysis.py
+    python experiments/low_market_cap_analysis.py
 
 Output:
     Console  -- descriptive statistics and full regression summary
-    results/regression_results.csv  -- coefficient table
+    experiments/results/low_cap_regression_results.csv  -- coefficient table
 """
 
 # -----------------------------------------------------------------------------
@@ -36,9 +29,10 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-ROOT        = Path(__file__).parent
+# Root is one level up from 'experiments' folder
+ROOT = Path(__file__).parent.parent
 RAW_DATA_DIR = ROOT / "data" / "raw"
-RESULTS_DIR = ROOT / "results"
+RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 data_files = list(RAW_DATA_DIR.glob("Data til Advanced Finance seminar v*.xlsx"))
@@ -48,6 +42,24 @@ if not data_files:
         f"\nERROR: No data files found in:\n  {RAW_DATA_DIR}\n\n"
         "Please place the 'Data til Advanced Finance seminar vX.xlsx' files in the data/raw/ folder and re-run.\n"
     )
+
+# List of lower market cap companies to filter by
+LOW_CAP_TICKERS = [
+    "SLB", "EOG", "GM", "CL", "FCX", "WELL", "PNC", "NOC", "GD", "WM", "NSC", 
+    "CMG", "ABNB", "MDLZ", "KMB", "OXY", "MPC", "EXC", "CHTR", "SHW", "NEM", 
+    "SPG", "USB", "ICE", "MMC", "ADI", "LRCX", "SNPS", "ITW", "CSX", "PH", 
+    "RCL", "HLT", "DHI", "GIS", "STZ", "DVN", "HES", "AEP", "SRE", "APD", 
+    "ECL", "O", "MCK", "DXCM", "IQV", "TFC", "MET", "FTNT", "DELL", "MMM", 
+    "EMR", "CTAS", "YUM", "EBAY", "PHM", "SYY", "KHC", "HAL", "BKR", "D", 
+    "EA", "DOW", "PPG", "PSA", "CBRE", "HUM", "BDX", "BIIB", "EW", "PRU", 
+    "AFL", "ALL", "NXPI", "HPQ", "ROK", "CARR", "OTIS", "AZO", "ORLY", "LVS", 
+    "HSY", "ADM", "FANG", "PCG", "ES", "FOXA", "NUE", "VMC", "EQR", "IDXX", 
+    "A", "STT", "BK", "CTSH", "ROP", "GWW", "PCAR", "ROST", "TSCO", "LEN", 
+    "KR", "MNST", "KMI", "OKE", "WEC", "ETR", "WBD", "LYV", "LYB", "CF", 
+    "DLR", "RMD", "HOLX", "AIG", "HIG", "WDAY", "MPWR", "GLW", "IR", "FAST", 
+    "DRI", "CCL", "EXPE", "EL", "CHD", "CTRA", "XEL", "AWK", "OMC", "ALB", 
+    "IP", "VTR", "CCI"
+]
 
 
 # =============================================================================
@@ -66,7 +78,14 @@ for file_path in sorted(data_files):
 
 df = pd.concat(dfs, ignore_index=True)
 
-print(f"\n  Loaded {len(df)} events - {df.shape[1]} columns")
+# Important: Filter the dataset using our subset of companies
+# The tickers in the dataset have suffixes (e.g., "LEN US"). We extract just the base ticker.
+original_len = len(df)
+base_tickers = df['Ticker'].astype(str).str.split().str[0]
+df = df[base_tickers.isin(LOW_CAP_TICKERS)].copy()
+
+print(f"\n  Loaded {original_len} total events.")
+print(f"  Filtered down to {len(df)} events for selected low market cap companies.")
 print(f"  Columns: {df.columns.tolist()}\n")
 
 
@@ -78,15 +97,7 @@ print("=" * 65)
 print("TASK 2 -- Constructing variables")
 print("=" * 65)
 
-# The Excel file already contains Std_Surprise_EPS and Std_Disagreement_Gap as
-# pre-calculated, standardized columns from Bloomberg. We verify they are present
-# and construct the standardized interaction term needed for the regression.
-#
-# If either column is missing, the script falls back to computing raw differences.
-# (Note: for a true standardized fallback later, you'd divide by stock price).
-
 # -- Std_Surprise_EPS  (Standardized Surprise) --------------------------------
-# Positive = beat, Negative = miss. Comparable across firms.
 if "Std_Surprise_EPS" not in df.columns or df["Std_Surprise_EPS"].isna().all():
     print("  'Std_Surprise_EPS' not found -- falling back to raw computation.")
     df["Std_Surprise_EPS"] = df["Actual_EPS"] - df["Analyst_Consensus_EPS"]
@@ -94,9 +105,6 @@ else:
     print("  'Std_Surprise_EPS' loaded from Excel.")
 
 # -- Std_Disagreement_Gap  (Standardized Gap) ---------------------------------
-# Positive = management more optimistic than analysts.
-# Negative = management more pessimistic than analysts.
-# Comparable across firms. Large absolute value = high informational complexity -> stronger drift.
 if "Std_Disagreement_Gap" not in df.columns or df["Std_Disagreement_Gap"].isna().all():
     print("  'Std_Disagreement_Gap' not found -- falling back to raw computation.")
     df["Std_Disagreement_Gap"] = df["Mgmt_Guidance_EPS"] - df["Analyst_Consensus_EPS"]
@@ -104,8 +112,6 @@ else:
     print("  'Std_Disagreement_Gap' loaded from Excel.")
 
 # -- Continuous Variable Centering and Standardization --------------------------
-# Convert Surprise and Gap to Z-scores to reduce structural multicollinearity 
-# and explicit fix scaling issues before creating the interaction term.
 df["Z_Surprise"] = (df["Std_Surprise_EPS"] - df["Std_Surprise_EPS"].mean()) / df["Std_Surprise_EPS"].std()
 df["Z_Gap"] = (df["Std_Disagreement_Gap"] - df["Std_Disagreement_Gap"].mean()) / df["Std_Disagreement_Gap"].std()
 
@@ -114,7 +120,6 @@ df["Z_Interaction"] = df["Z_Surprise"] * df["Z_Gap"]
 print("  'Z_Interaction' (interaction term) computed.")
 
 # -- Control Variables: Market Cap and Sector ---------------------------------
-# We use the natural log of Market Cap to account for size effects, and standardize it.
 if "Market_Cap" in df.columns:
     log_mc = np.log(df["Market_Cap"].replace(0, np.nan))
     df["Std_Log_Market_Cap"] = (log_mc - log_mc.mean()) / log_mc.std()
@@ -122,8 +127,6 @@ if "Market_Cap" in df.columns:
 else:
     df["Std_Log_Market_Cap"] = np.nan
 
-# We create dummy variables for the Sector column.
-# drop_first=True avoids the dummy variable trap (perfect multicollinearity).
 sector_cols = []
 if "Sector" in df.columns:
     sector_dummies = pd.get_dummies(df["Sector"], prefix="Sector", drop_first=True, dtype=int)
@@ -170,12 +173,11 @@ print("=" * 65)
 DEPENDENT  = "CAR_2_60"
 REGRESSORS = ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols
 
-# Drop rows where any required variable (or our clustering variable) is missing (listwise deletion)
 reg_df = df[["Ticker", DEPENDENT] + REGRESSORS].dropna()
 n_obs  = len(reg_df)
 
-print(f"\n  Full sample  : {len(df)} events")
-print(f"  Regression N : {n_obs} observations (after removing rows with missing values)")
+print(f"\n  Filtered sample : {len(df)} events")
+print(f"  Regression N    : {n_obs} observations (after removing rows with missing values)")
 
 if n_obs < len(REGRESSORS) + 2:
     print(
@@ -184,12 +186,8 @@ if n_obs < len(REGRESSORS) + 2:
     )
 else:
     y = reg_df[DEPENDENT]
-
-    # sm.add_constant() prepends a column of 1s (the intercept alpha).
     X = sm.add_constant(reg_df[REGRESSORS])
 
-    # Clustered standard errors at the firm level to account for the fact
-    # that some observations belong to the same company across different events.
     result = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": reg_df["Ticker"]})
 
     # -- Full statsmodels summary ----------------------------------------------
@@ -205,9 +203,9 @@ else:
         "CI_lower_95" : result.conf_int()[0],
         "CI_upper_95" : result.conf_int()[1],
     })
-    out_path = RESULTS_DIR / "regression_results.csv"
+    out_path = RESULTS_DIR / "low_cap_regression_results.csv"
     coef_table.to_csv(out_path)
-    print(f"\n  Coefficient table saved to: {out_path.relative_to(ROOT)}")
+    print(f"\n  Coefficient table saved to: experiments/results/low_cap_regression_results.csv")
 
     # -- Quick-read summary ----------------------------------------------------
     print()
@@ -227,5 +225,5 @@ else:
     print()
     print("  Significance: *** p<0.01  ** p<0.05  * p<0.10")
     print()
-    print("  NOTE: Results are based on the full 10-file dataset.")
+    print("  NOTE: Results are based on the Low Market Cap Subgroup.")
     print()
