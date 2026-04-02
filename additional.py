@@ -59,11 +59,11 @@ if not data_files:
 # Run controls
 # -----------------------------------------------------------------------------
 
-RUN_MAIN_MODELS = True
+RUN_MAIN_MODELS = False
 RUN_WINSORIZED  = False
 RUN_BHAR        = False
-RUN_IMMEDIATE   = False
-RUN_SUBSAMPLES  = False
+RUN_IMMEDIATE   = True
+RUN_SUBSAMPLES  = True
 
 # =============================================================================
 # TASK 1 -- LOAD DATA
@@ -143,6 +143,7 @@ df["W_Z_Gap"] = winsorize_series(df["Z_Gap"])
 df["W_Z_Interaction"] = df["W_Z_Surprise"] * df["W_Z_Gap"]
 df["W_Abs_Z_Gap"] = df["W_Z_Gap"].abs()
 df["W_Z_Int_AbsGap"] = df["W_Z_Surprise"] * df["W_Abs_Z_Gap"]
+df["Z_Surprise_Sq"] = df["Z_Surprise"] ** 2
 print("  Winsorized variables computed (1st and 99th percentiles).")
 
 # -- Market cap control -------------------------------------------------------
@@ -357,6 +358,13 @@ if RUN_IMMEDIATE and "CAR_0_1" in df.columns:
          ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
         ("Immediate Reaction Model 3 -- Absolute Interaction", "CAR_0_1",
          ["Z_Surprise", "Abs_Z_Gap", "Z_Int_AbsGap", "Std_Log_Market_Cap"] + sector_cols),
+         ("Immediate Reaction Model 4 -- Nonlinear Surprise", "CAR_0_1",
+        ["Z_Surprise", "Z_Surprise_Sq", "Std_Log_Market_Cap"] + sector_cols),
+        ("Immediate Reaction Model 6 -- Gap Only", "CAR_0_1",
+        ["Z_Gap", "Std_Log_Market_Cap"] + sector_cols),
+        ("Immediate Reaction Model 7 -- Full Model", "CAR_0_1",
+        ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
+         
     ]
 
     for model_name, dep, regs in immediate_specs:
