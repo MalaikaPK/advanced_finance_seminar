@@ -60,10 +60,11 @@ if not data_files:
 # -----------------------------------------------------------------------------
 
 RUN_MAIN_MODELS = False
-RUN_WINSORIZED  = False
+RUN_WINSORIZED  = True
 RUN_BHAR        = False
-RUN_IMMEDIATE   = True
+RUN_IMMEDIATE   = False
 RUN_SUBSAMPLES  = True
+RUN_RETURN_LINK = False
 
 # =============================================================================
 # TASK 1 -- LOAD DATA
@@ -282,6 +283,7 @@ if RUN_MAIN_MODELS:
 
     main_specs = [
         ("Model 1 -- Baseline PEAD", "CAR_2_60", ["Z_Surprise"]),
+        ("Model X -- GAP PEAD", "CAR_2_60", ["Z_Gap"]),
         ("Model 2 -- Add Signed Gap", "CAR_2_60", ["Z_Surprise", "Z_Gap"]),
         ("Model 3 -- Full Signed Model", "CAR_2_60",
          ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
@@ -330,11 +332,15 @@ if RUN_BHAR and "BHAR_2_60" in df.columns:
     print("=" * 65)
 
     bhar_specs = [
-        ("BHAR Model 1 -- Baseline PEAD", "BHAR_2_60", ["Z_Surprise"]),
-        ("BHAR Model 2 -- Signed Interaction", "BHAR_2_60",
-         ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
-        ("BHAR Model 3 -- Absolute Interaction", "BHAR_2_60",
-         ["Z_Surprise", "Abs_Z_Gap", "Z_Int_AbsGap", "Std_Log_Market_Cap"] + sector_cols),
+    ("BHAR Model 1 -- Baseline", "BHAR_2_60",
+     ["Z_Surprise"]),
+
+    ("BHAR Model 2 -- Add Disagreement", "BHAR_2_60",
+     ["Z_Surprise", "Z_Gap"]),
+
+    ("BHAR Model 3 -- Full Specification", "BHAR_2_60",
+     ["Z_Surprise", "Z_Gap", "Z_Interaction",
+      "Std_Log_Market_Cap"] + sector_cols),
     ]
 
     for model_name, dep, regs in bhar_specs:
@@ -353,19 +359,31 @@ if RUN_IMMEDIATE and "CAR_0_1" in df.columns:
     print("=" * 65)
 
     immediate_specs = [
-        ("Immediate Reaction Model 1 -- Baseline", "CAR_0_1", ["Z_Surprise"]),
-        ("Immediate Reaction Model 2 -- Signed Interaction", "CAR_0_1",
-         ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
-        ("Immediate Reaction Model 3 -- Absolute Interaction", "CAR_0_1",
-         ["Z_Surprise", "Abs_Z_Gap", "Z_Int_AbsGap", "Std_Log_Market_Cap"] + sector_cols),
-         ("Immediate Reaction Model 4 -- Nonlinear Surprise", "CAR_0_1",
-        ["Z_Surprise", "Z_Surprise_Sq", "Std_Log_Market_Cap"] + sector_cols),
-        ("Immediate Reaction Model 6 -- Gap Only", "CAR_0_1",
-        ["Z_Gap", "Std_Log_Market_Cap"] + sector_cols),
-        ("Immediate Reaction Model 7 -- Full Model", "CAR_0_1",
-        ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
-         
+    ("Immediate Reaction Model 1 -- Baseline", "CAR_0_1",
+     ["Z_Surprise"]),
+
+    ("Immediate Reaction Model 2 -- Add Disagreement", "CAR_0_1",
+     ["Z_Surprise", "Z_Gap"]),
+
+    ("Immediate Reaction Model 3 -- Full Specification", "CAR_0_1",
+     ["Z_Surprise", "Z_Gap", "Z_Interaction",
+      "Std_Log_Market_Cap"] + sector_cols),
     ]
+
+    # immediate_specs = [
+    #     ("Immediate Reaction Model 1 -- Baseline", "CAR_0_1", ["Z_Surprise"]),
+    #     ("Immediate Reaction Model 2 -- Signed Interaction", "CAR_0_1",
+    #      ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
+    #     ("Immediate Reaction Model 3 -- Absolute Interaction", "CAR_0_1",
+    #      ["Z_Surprise", "Abs_Z_Gap", "Z_Int_AbsGap", "Std_Log_Market_Cap"] + sector_cols),
+    #      ("Immediate Reaction Model 4 -- Nonlinear Surprise", "CAR_0_1",
+    #     ["Z_Surprise", "Z_Surprise_Sq", "Std_Log_Market_Cap"] + sector_cols),
+    #     ("Immediate Reaction Model 6 -- Gap Only", "CAR_0_1",
+    #     ["Z_Gap", "Std_Log_Market_Cap"] + sector_cols),
+    #     ("Immediate Reaction Model 7 -- Full Model", "CAR_0_1",
+    #     ["Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols),
+         
+    # ]
 
     for model_name, dep, regs in immediate_specs:
         _, coef_table = run_regression(df, dep, regs, model_name)
@@ -402,11 +420,74 @@ if RUN_SUBSAMPLES:
 
 
 # =============================================================================
-# TASK 9 -- SAVE ALL RESULTS
+# TASK 9 -- RELATION BETWEEN IMMEDIATE REACTION AND POST-ANNOUNCEMENT RETURNS
+# =============================================================================
+
+if RUN_RETURN_LINK and {"CAR_0_1", "CAR_2_60"}.issubset(df.columns):
+    print("\n" + "=" * 65)
+    print("TASK 9 -- Relation Between Immediate Reaction and Post-Announcement Returns")
+    print("=" * 65)
+
+    # -------------------------------------------------------------------------
+    # 1. Simple correlation
+    # -------------------------------------------------------------------------
+    corr_df = df[["CAR_0_1", "CAR_2_60"]].dropna()
+
+    pearson_corr = corr_df["CAR_0_1"].corr(corr_df["CAR_2_60"], method="pearson")
+    spearman_corr = corr_df["CAR_0_1"].corr(corr_df["CAR_2_60"], method="spearman")
+
+    print("\nSimple correlations:")
+    print(f"  N                : {len(corr_df)}")
+    print(f"  Pearson corr     : {pearson_corr:.4f}")
+    print(f"  Spearman corr    : {spearman_corr:.4f}")
+
+    corr_table = pd.DataFrame({
+        "Model": ["Correlation Test", "Correlation Test"],
+        "Sample": ["Full sample", "Full sample"],
+        "Dependent": ["CAR_2_60", "CAR_2_60"],
+        "Variable": ["Pearson(CAR_0_1, CAR_2_60)", "Spearman(CAR_0_1, CAR_2_60)"],
+        "Coefficient": [pearson_corr, spearman_corr],
+        "Std_Error": [np.nan, np.nan],
+        "t_stat": [np.nan, np.nan],
+        "p_value": [np.nan, np.nan],
+        "CI_lower_95": [np.nan, np.nan],
+        "CI_upper_95": [np.nan, np.nan],
+        "N": [len(corr_df), len(corr_df)],
+        "R2": [np.nan, np.nan],
+        "Adj_R2": [np.nan, np.nan],
+    })
+    all_results.append(corr_table)
+
+    # -------------------------------------------------------------------------
+    # 2. Univariate regression: does immediate reaction predict later returns?
+    # -------------------------------------------------------------------------
+    _, coef_table = run_regression(
+        df,
+        "CAR_2_60",
+        ["CAR_0_1"],
+        "Return Link Model 1 -- CAR_2_60 on CAR_0_1"
+    )
+    if coef_table is not None:
+        all_results.append(coef_table)
+
+    # -------------------------------------------------------------------------
+    # 3. Controlled regression
+    # -------------------------------------------------------------------------
+    _, coef_table = run_regression(
+        df,
+        "CAR_2_60",
+        ["CAR_0_1", "Z_Surprise", "Z_Gap", "Z_Interaction", "Std_Log_Market_Cap"] + sector_cols,
+        "Return Link Model 2 -- CAR_2_60 on CAR_0_1 + Controls"
+    )
+    if coef_table is not None:
+        all_results.append(coef_table)
+
+# =============================================================================
+# TASK 100 -- SAVE ALL RESULTS
 # =============================================================================
 
 print("\n" + "=" * 65)
-print("TASK 9 -- Saving Results")
+print("TASK 10 -- Saving Results")
 print("=" * 65)
 
 if all_results:
